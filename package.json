@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "live": "node live-repro.mjs",
     "repro": "node repro.mjs",
     "test": "node repro.mjs"
   },

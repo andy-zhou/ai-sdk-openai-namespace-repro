@@ -1,19 +1,16 @@
 # AI SDK OpenAI namespace repro
 
-Reproduces `ai@7.0.66` sending a namespace in the first OpenAI request, then
-dropping it from the replayed `function_call` in the second request.
+Shows `ai@7.0.66` sending a namespace in request 1, then dropping it from the
+historical `function_call` in request 2.
 
-## Run
+## Deterministic reproduction
 
 ```sh
 npm install
 npm test
 ```
 
-No API key or network request is required. Fake `fetch` implementations capture
-both requests serialized by `@ai-sdk/openai@4.0.42`.
-
-## What happens
+No API key is needed. The test captures both serialized requests:
 
 1. Request 1 correctly sends the tool in the `company_draft_payroll` namespace.
 2. The model returns an invalid function call with that namespace.
@@ -31,24 +28,20 @@ both requests serialized by `@ai-sdk/openai@4.0.42`.
 }
 ```
 
-Request 1 contains:
-
-```json
-{
-  "type": "namespace",
-  "name": "company_draft_payroll"
-}
-```
-
-Request 2 contains the replayed call without `namespace`:
-
-```json
-{
-  "type": "function_call",
-  "call_id": "call_1",
-  "name": "create_company_off_cycle_draft_payroll",
-  "arguments": "{}"
-}
-```
-
 The script exits with status 1 when the bug is reproduced.
+
+## Live OpenAI rejection
+
+```sh
+OPENAI_API_KEY=... npm run live
+```
+
+This uses hosted `tool_search` and a deferred namespace. Request 1 gets a real,
+valid namespaced call from OpenAI. Request 2 keeps its arguments and later user
+turn unchanged, but removes the historical call's namespace. OpenAI returns:
+
+```text
+400 Missing namespace for function_call 'create_repro_widget'. It does not exist
+in the default namespace. Round-trip the model's function_call item with its
+namespace field included.
+```
