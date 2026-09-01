@@ -1,7 +1,7 @@
 # AI SDK OpenAI namespace repro
 
-Reproduces `ai@7.0.66` dropping an OpenAI function-call namespace after invalid
-tool input is converted to a UI message and replayed.
+Reproduces `ai@7.0.66` sending a namespace in the first OpenAI request, then
+dropping it from the replayed `function_call` in the second request.
 
 ## Run
 
@@ -10,24 +10,37 @@ npm install
 npm test
 ```
 
-No API key or network request is required. A mock model creates the invalid
-namespaced call, and a fake `fetch` captures the request serialized by
-`@ai-sdk/openai@4.0.42`.
+No API key or network request is required. Fake `fetch` implementations capture
+both requests serialized by `@ai-sdk/openai@4.0.42`.
 
-The namespace is incorrectly stored as result metadata and is missing from the
-replayed call:
+## What happens
+
+1. Request 1 correctly sends the tool in the `company_draft_payroll` namespace.
+2. The model returns an invalid function call with that namespace.
+3. AI SDK stores the namespace as result metadata instead of call metadata.
+4. Request 2 replays the function call without its namespace.
 
 ```json
 {
-  "namespaceFromProvider": "company_draft_payroll",
-  "namespaceOnUICall": null,
-  "namespaceOnUIResult": "company_draft_payroll",
-  "namespaceOnReplayedModelCall": null,
-  "namespaceInOpenAIRequest": null
+  "request1ToolNamespace": "company_draft_payroll",
+  "response1FunctionCallNamespace": "company_draft_payroll",
+  "persistedUICallNamespace": null,
+  "persistedUIResultNamespace": "company_draft_payroll",
+  "replayedModelCallNamespace": null,
+  "request2FunctionCallNamespace": null
 }
 ```
 
-The resulting OpenAI payload has no `namespace`:
+Request 1 contains:
+
+```json
+{
+  "type": "namespace",
+  "name": "company_draft_payroll"
+}
+```
+
+Request 2 contains the replayed call without `namespace`:
 
 ```json
 {
