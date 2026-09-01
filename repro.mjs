@@ -1,4 +1,11 @@
-import { convertToModelMessages, readUIMessageStream, streamText, tool } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+import {
+  convertToModelMessages,
+  generateText,
+  readUIMessageStream,
+  streamText,
+  tool,
+} from 'ai';
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 import { z } from 'zod';
 
@@ -74,21 +81,55 @@ const replayedToolCall = replayedMessages
   .flatMap(message => (Array.isArray(message.content) ? message.content : []))
   .find(part => part.type === 'tool-call');
 
+// Capture the actual request body produced by @ai-sdk/openai. The fake fetch
+// prevents a network request; its response only exists to stop generateText.
+let openAIRequestBody;
+const openai = createOpenAI({
+  apiKey: 'not-used',
+  fetch: async (_url, init) => {
+    openAIRequestBody = JSON.parse(init.body);
+    return new Response(JSON.stringify({ error: { message: 'request captured' } }), {
+      headers: { 'content-type': 'application/json' },
+      status: 400,
+    });
+  },
+});
+
+try {
+  await generateText({
+    model: openai.responses('gpt-5.4'),
+    messages: replayedMessages,
+    maxRetries: 0,
+  });
+} catch {
+  // Expected: the fake fetch returns 400 after capturing the serialized body.
+}
+
+const outboundFunctionCall = openAIRequestBody?.input?.find(
+  item => item.type === 'function_call',
+);
+
 const observed = {
-  originalNamespace: providerMetadata.openai.namespace,
-  uiCallNamespace: toolPart.callProviderMetadata?.openai?.namespace,
-  uiResultNamespace: toolPart.resultProviderMetadata?.openai?.namespace,
-  replayedNamespace: replayedToolCall?.providerOptions?.openai?.namespace,
+  namespaceFromProvider: providerMetadata.openai.namespace,
+  namespaceOnUICall: toolPart.callProviderMetadata?.openai?.namespace ?? null,
+  namespaceOnUIResult: toolPart.resultProviderMetadata?.openai?.namespace ?? null,
+  namespaceOnReplayedModelCall:
+    replayedToolCall?.providerOptions?.openai?.namespace ?? null,
+  namespaceInOpenAIRequest: outboundFunctionCall?.namespace ?? null,
 };
 
+console.log('Namespace at each stage:');
 console.log(JSON.stringify(observed, null, 2));
+console.log('\nActual function_call serialized for OpenAI:');
+console.log(JSON.stringify(outboundFunctionCall, null, 2));
 
 if (
-  observed.uiCallNamespace !== namespace ||
-  observed.replayedNamespace !== namespace
+  observed.namespaceOnUICall !== namespace ||
+  observed.namespaceOnReplayedModelCall !== namespace ||
+  observed.namespaceInOpenAIRequest !== namespace
 ) {
-  console.error(
-    '\nBUG REPRODUCED: the invalid tool call moves the namespace to resultProviderMetadata, then drops it while rebuilding the model history.',
+  console.log(
+    '\nBUG REPRODUCED: the function_call sent back to OpenAI has no namespace.',
   );
   process.exitCode = 1;
 } else {

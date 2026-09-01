@@ -17,8 +17,9 @@ The model call begins with:
 AI SDK converts the invalid call into a UI tool part with state `output-error`.
 In `ai@7.0.66`, the namespace lands in `resultProviderMetadata` instead of
 `callProviderMetadata`. `convertToModelMessages` only reads
-`callProviderMetadata` when rebuilding the function call, so the replayed call
-has no namespace.
+`callProviderMetadata` when rebuilding the function call. The repro then uses
+`@ai-sdk/openai@4.0.42` with a fake `fetch` to capture the actual OpenAI request
+body, proving that the serialized `function_call` has no `namespace`.
 
 ## Run
 
@@ -29,20 +30,35 @@ npm test
 
 No API key or network request is required after installing dependencies. The
 mock model emits the same provider metadata that the OpenAI Responses provider
-returns for a namespaced function call.
+returns for a namespaced function call, and the fake `fetch` captures the
+outbound request locally.
 
 On the affected version, the command prints:
 
 ```json
 {
-  "originalNamespace": "company_draft_payroll",
-  "uiResultNamespace": "company_draft_payroll"
+  "namespaceFromProvider": "company_draft_payroll",
+  "namespaceOnUICall": null,
+  "namespaceOnUIResult": "company_draft_payroll",
+  "namespaceOnReplayedModelCall": null,
+  "namespaceInOpenAIRequest": null
 }
 ```
 
-`uiCallNamespace` and `replayedNamespace` are `undefined`, so JSON omits them
-and the process exits with status 1. A fixed version should retain both values
-as `company_draft_payroll` and exit successfully.
+It also prints the exact `function_call` serialized by `@ai-sdk/openai`:
+
+```json
+{
+  "type": "function_call",
+  "call_id": "call_1",
+  "name": "create_company_off_cycle_draft_payroll",
+  "arguments": "{}"
+}
+```
+
+The missing `namespace` property is the failure. A fixed version should retain
+`company_draft_payroll` through every stage, include it in this payload, and
+exit successfully.
 
 ## Why it matters
 
