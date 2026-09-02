@@ -9,8 +9,8 @@ import {
 import { MockLanguageModelV4, simulateReadableStream } from 'ai/test';
 import { z } from 'zod';
 
-const namespace = 'company_draft_payroll';
-const toolName = 'create_company_off_cycle_draft_payroll';
+const namespace = 'widget_tools';
+const toolName = 'create_widget';
 const providerMetadata = {
   openai: {
     itemId: 'fc_1',
@@ -19,16 +19,17 @@ const providerMetadata = {
 };
 
 const namespacedTool = tool({
-  description: 'Create an off-cycle payroll.',
+  description: 'Create a synthetic widget.',
   inputSchema: z.object({
-    draftPayrollData: z.object({}),
-    offCycleType: z.string(),
+    widgetData: z.object({}),
+    widgetType: z.string(),
   }),
   execute: async () => ({ ok: true }),
   providerOptions: {
     openai: {
+      deferLoading: true,
       namespace: {
-        description: 'Payroll tools.',
+        description: 'Synthetic widget tools.',
         name: namespace,
       },
     },
@@ -51,8 +52,11 @@ const firstOpenAI = createOpenAI({
 try {
   await generateText({
     model: firstOpenAI.responses('gpt-5.4'),
-    prompt: 'Create an off-cycle payroll.',
-    tools: { [toolName]: namespacedTool },
+    prompt: 'Create a widget.',
+    tools: {
+      [toolName]: namespacedTool,
+      tool_search: firstOpenAI.tools.toolSearch(),
+    },
     maxRetries: 0,
   });
 } catch {
@@ -63,8 +67,8 @@ const firstRequestNamespaceTool = firstOpenAIRequestBody?.tools?.find(
   item => item.type === 'namespace',
 );
 
-// The mock model returns a namespaced function call whose input does not match
-// the local tool schema. No OpenAI API key or network request is needed.
+// The mock model returns an invalid namespaced function call, matching the live
+// input-validation path. No OpenAI API key or network request is needed.
 const model = new MockLanguageModelV4({
   doStream: async () => ({
     stream: simulateReadableStream({
@@ -92,7 +96,7 @@ const model = new MockLanguageModelV4({
 
 const result = streamText({
   model,
-  messages: [{ role: 'user', content: 'Create an off-cycle payroll.' }],
+  messages: [{ role: 'user', content: 'Create a widget.' }],
   tools: {
     [toolName]: namespacedTool,
   },

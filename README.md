@@ -1,73 +1,65 @@
 # AI SDK OpenAI namespace repro
 
-Shows `ai@7.0.66` sending a namespace in request 1, then dropping it from the
-historical `function_call` in request 2.
+Minimal synthetic reproduction of `ai@7.0.66` dropping a function-call
+namespace between two OpenAI requests. All names and data are fictional.
 
-## Deterministic reproduction
+The scenario uses a deferred `widget_tools.create_widget` function whose schema
+requires `widgetData` and `widgetType`:
+
+1. Request 1 sends the `widget_tools` namespace.
+2. OpenAI returns an invalid `create_widget({})` call with
+   `namespace: "widget_tools"`.
+3. Local validation fails, and the UI-message round trip stores the namespace as
+   result metadata instead of call metadata.
+4. Request 2 replays the historical function call without `namespace`.
+5. OpenAI rejects the request before answering the next user turn.
+
+Relevant request-2 history (reasoning items omitted):
+
+```json
+[
+  {
+    "role": "user",
+    "content": "Use tool search to load create_widget, then call it with exactly {}."
+  },
+  { "type": "tool_search_call" },
+  {
+    "type": "tool_search_output",
+    "tools": [{ "type": "namespace", "name": "widget_tools" }]
+  },
+  {
+    "type": "function_call",
+    "name": "create_widget",
+    "arguments": "{}"
+  },
+  { "type": "function_call_output", "output": "input validation failed" },
+  { "role": "user", "content": "Now answer continued." }
+]
+```
+
+The `tool_search_output` still says the function belongs to `widget_tools`, but
+the historical `function_call` no longer carries that namespace. OpenAI returns:
+
+```text
+400 Missing namespace for function_call 'create_widget'. It does not exist in
+the default namespace. Round-trip the model's function_call item with its
+namespace field included.
+```
+
+## Run
 
 ```sh
 npm install
 npm test
 ```
 
-No API key is needed. The test captures both serialized requests:
-
-1. Request 1 correctly sends the tool in the `company_draft_payroll` namespace.
-2. The model returns an invalid function call with that namespace.
-3. AI SDK stores the namespace as result metadata instead of call metadata.
-4. Request 2 replays the function call without its namespace.
-
-```json
-{
-  "request1ToolNamespace": "company_draft_payroll",
-  "response1FunctionCallNamespace": "company_draft_payroll",
-  "persistedUICallNamespace": null,
-  "persistedUIResultNamespace": "company_draft_payroll",
-  "replayedModelCallNamespace": null,
-  "request2FunctionCallNamespace": null
-}
-```
-
-The script exits with status 1 when the bug is reproduced.
-
-## Live OpenAI rejection
+`npm test` is offline and exits with status 1 when it reproduces the namespace
+loss. To verify the upstream rejection with a real request:
 
 ```sh
 OPENAI_API_KEY=... npm run live
 ```
 
-This uses hosted `tool_search` and a deferred namespace. Request 1 gets a real,
-valid namespaced call from OpenAI. Request 2 keeps its arguments and later user
-turn unchanged, but removes the historical call's namespace.
-
-Relevant conversation history sent in request 2 (reasoning items omitted):
-
-```json
-[
-  {
-    "role": "user",
-    "content": "Use tool search to load and call create_repro_widget with requiredValue set to x."
-  },
-  { "type": "tool_search_call" },
-  {
-    "type": "tool_search_output",
-    "tools": [{ "type": "namespace", "name": "namespace_repro" }]
-  },
-  {
-    "type": "function_call",
-    "name": "create_repro_widget",
-    "arguments": "{\"requiredValue\":\"x\"}"
-  },
-  { "type": "function_call_output", "output": "created" },
-  { "role": "user", "content": "Now answer continued." }
-]
-```
-
-The historical `function_call` has valid arguments but no `namespace`, so
-OpenAI rejects the whole request before answering the final user turn:
-
-```text
-400 Missing namespace for function_call 'create_repro_widget'. It does not exist
-in the default namespace. Round-trip the model's function_call item with its
-namespace field included.
-```
+The live check performs the complete flow through AI SDK and OpenAI. It does not
+manually edit the history: the namespace is lost by the real UI-message round
+trip before AI SDK serializes request 2.
