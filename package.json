@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "live": "node live-repro.mjs",
-    "repro": "node repro.mjs",
-    "test": "node repro.mjs"
+    "repro": "node live-repro.mjs",
+    "test": "node live-repro.mjs"
   },
   "engines": {
     "node": ">=20"

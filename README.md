@@ -1,7 +1,7 @@
 # AI SDK OpenAI namespace repro
 
-Minimal synthetic reproduction of `ai@7.0.66` dropping a function-call
-namespace between two OpenAI requests. All names and data are fictional.
+Live synthetic reproduction of `ai@7.0.66` dropping a function-call namespace
+between two OpenAI requests. All names and data are fictional.
 
 The scenario uses a deferred `widget_tools.create_widget` function whose schema
 requires `widgetData` and `widgetType`:
@@ -50,16 +50,9 @@ namespace field included.
 
 ```sh
 npm install
-npm test
+OPENAI_API_KEY=... npm test
 ```
 
-`npm test` is offline and exits with status 1 when it reproduces the namespace
-loss. To verify the upstream rejection with a real request:
-
-```sh
-OPENAI_API_KEY=... npm run live
-```
-
-The live check performs the complete flow through AI SDK and OpenAI. It does not
-manually edit the history: the namespace is lost by the real UI-message round
-trip before AI SDK serializes request 2.
+The script performs the complete flow through AI SDK and OpenAI. It does not use
+mocks or manually edit the history: the namespace is lost by the real
+UI-message round trip before AI SDK serializes request 2.
