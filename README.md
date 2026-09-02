@@ -1,28 +1,18 @@
 # AI SDK OpenAI namespace repro
 
-Live synthetic reproduction of `ai@7.0.66` dropping a function-call namespace
-between two OpenAI requests. All names and data are fictional.
+Live, synthetic reproduction of a namespace-loss bug in `ai@7.0.66`.
 
-The scenario uses a deferred `widget_tools.create_widget` function whose schema
-requires `widgetData` and `widgetType`:
+1. Request 1 loads `widget_tools` and OpenAI returns the invalid namespaced call
+   `create_widget({})`.
+2. AI SDK converts the validation failure to `output-error`, storing the
+   namespace in `resultProviderMetadata` instead of `callProviderMetadata`.
+3. `convertToModelMessages` replays the call without the namespace.
+4. Request 2 fails before OpenAI can answer the next user message.
 
-1. Request 1 sends the `widget_tools` namespace.
-2. OpenAI returns an invalid `create_widget({})` call with
-   `namespace: "widget_tools"`.
-3. Local validation fails, and the UI-message round trip stores the namespace as
-   result metadata instead of call metadata.
-4. Request 2 replays the historical function call without `namespace`.
-5. OpenAI rejects the request before answering the next user turn.
-
-Relevant request-2 history (reasoning items omitted):
+Request 2 contains this inconsistent history:
 
 ```json
 [
-  {
-    "role": "user",
-    "content": "Use tool search to load create_widget, then call it with exactly {}."
-  },
-  { "type": "tool_search_call" },
   {
     "type": "tool_search_output",
     "tools": [{ "type": "namespace", "name": "widget_tools" }]
@@ -37,8 +27,7 @@ Relevant request-2 history (reasoning items omitted):
 ]
 ```
 
-The `tool_search_output` still says the function belongs to `widget_tools`, but
-the historical `function_call` no longer carries that namespace. OpenAI returns:
+OpenAI returns:
 
 ```text
 400 Missing namespace for function_call 'create_widget'. It does not exist in
@@ -53,6 +42,5 @@ npm install
 OPENAI_API_KEY=... npm test
 ```
 
-The script performs the complete flow through AI SDK and OpenAI. It does not use
-mocks or manually edit the history: the namespace is lost by the real
-UI-message round trip before AI SDK serializes request 2.
+The test uses real AI SDK and OpenAI round trips. It uses no mocks, manual
+history edits, production data, or production tools.
